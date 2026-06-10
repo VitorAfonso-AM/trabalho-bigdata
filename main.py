@@ -3,7 +3,7 @@ from openpyxl.utils import get_column_letter
 
 # ── Configurações ────────────────────────────────────────────────────────────
 
-ARQUIVO_ENTRADA = "table_6a04a78892761.csv"
+ARQUIVO_ENTRADA = "table_6a1ed5a425d45.csv"
 ARQUIVO_SAIDA   = "agenda_processada.xlsx"
 
 DATA_REAJUSTE_PARTICULAR = pd.Timestamp("2025-10-01")
@@ -13,7 +13,14 @@ COLUNAS_REMOVER = {
     "Pagamento", "Comissão Total", "Comissão Paga", "Total de Comissão", "Etiqueta",
 }
 
-PROFISSIONAL_EXCLUIR = "ana maria faria dos santos"
+PROFISSIONAIS_EXCLUIR = {
+    "ana maria faria dos santos",
+    "joyce militão filett",
+    "daniele de sousa sales nobre",
+    "verônica fonseca de lima ferreira",
+    "giovanna caria de figueiredo",
+    "katia cristina duarte lopes",
+}
 
 # ── Utilitários ──────────────────────────────────────────────────────────────
 
@@ -26,7 +33,6 @@ def formatar_telefone(val):
     texto = str(val).strip()
     return "" if texto.lower() in ("nan", "none") else texto
 
-
 def calcular_idade_na_consulta(nascimento: pd.Series, data_consulta: pd.Series) -> pd.Series:
     """Calcula idade completa na data da consulta, respeitando se o aniversário já passou."""
     validos = nascimento.notna() & data_consulta.notna()
@@ -38,7 +44,6 @@ def calcular_idade_na_consulta(nascimento: pd.Series, data_consulta: pd.Series) 
         (data_consulta.dt.year - nascimento.dt.year - aniversario_futuro.astype(int))
         .where(validos)
     )
-
 
 def salvar_excel(df: pd.DataFrame, caminho: str):
     """Salva o DataFrame em .xlsx, garantindo que 'Telefone' seja tratado como texto."""
@@ -67,24 +72,20 @@ if "Telefone" in df.columns:
 df["Data"]               = pd.to_datetime(df["Data"],               dayfirst=True, errors="coerce")
 df["Data de Nascimento"] = pd.to_datetime(df["Data de Nascimento"], dayfirst=True, errors="coerce")
 
-# 4. Remover profissional excluído
-df = df[df["Profissional"].astype(str).str.strip().str.lower() != PROFISSIONAL_EXCLUIR]
+# 4. Remover profissionais excluídos
+df = df[~df["Profissional"].astype(str).str.strip().str.lower().isin(PROFISSIONAIS_EXCLUIR)]
 
-# 5. Normalizar status ("Confirmado" → "Atendido")
-if "Status" in df.columns:
-    df["Status"] = df["Status"].astype(str).str.strip().replace({"Confirmado": "Atendido"})
-
-# 6. Calcular idade na data da consulta
+# 5. Calcular idade na data da consulta
 df["Idade na Consulta"] = calcular_idade_na_consulta(df["Data de Nascimento"], df["Data"])
 
-# 7. Derivar flags de negócio
+# 6. Derivar flags de negócio
 tipo          = df["Convênio"].fillna("").astype(str).str.strip().str.lower()
 eh_particular = tipo.str.contains("particular")
 eh_amil       = tipo.str.contains("amil") & ~eh_particular
 apos_reajuste = df["Data"] >= DATA_REAJUSTE_PARTICULAR
 menor_idade   = df["Idade na Consulta"] <= 18
 
-# 8. Aplicar valores e comissões
+# 7. Aplicar valores e comissões
 valor    = pd.Series(0.0, index=df.index)
 comissao = pd.Series(0.0, index=df.index)
 
@@ -100,7 +101,7 @@ comissao.loc[eh_amil]                        = 25
 df["Total"]    = valor
 df["Comissão"] = comissao
 
-# 9. Remover colunas desnecessárias e exportar
+# 8. Remover colunas desnecessárias e exportar
 df.drop(columns=COLUNAS_REMOVER, inplace=True, errors="ignore")
 salvar_excel(df, ARQUIVO_SAIDA)
 
